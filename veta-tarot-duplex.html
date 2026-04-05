@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>VETA · Impresión Doble Cara</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #555; font-family: Georgia, 'Times New Roman', serif; }
+
+    .controls {
+      background: #1a120b;
+      color: #f4e4bc;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .controls h1 { font-size: 17px; letter-spacing: 5px; margin-right: auto; font-weight: normal; }
+    .btn {
+      background: #8b4513; color: #f4e4bc; border: 1px solid transparent;
+      padding: 7px 16px; font-family: Georgia, serif; font-size: 11px;
+      letter-spacing: 1px; text-transform: uppercase; cursor: pointer;
+    }
+    .btn:hover { background: #3e4c1d; border-color: #f4e4bc; }
+    .btn-print { background: #111; font-weight: bold; }
+    .btn-print:hover { background: #000; }
+    .info { font-size: 10px; opacity: 0.4; line-height: 1.5; }
+
+    .sheet-wrap {
+      display: flex; flex-direction: column;
+      align-items: center; padding: 24px; gap: 16px;
+    }
+
+    .page-label {
+      color: #ddd; font-size: 10px; letter-spacing: 2px;
+      text-transform: uppercase; align-self: flex-start;
+      margin-left: calc(50% - 105mm);
+    }
+
+    .page {
+      width: 210mm; height: 297mm;
+      background: white; position: relative;
+      box-shadow: 0 6px 30px rgba(0,0,0,0.6);
+      overflow: hidden;
+    }
+    .page svg { display: block; width: 210mm; height: 297mm; }
+
+    .page.back-page { background: #f9f9f9; }
+
+    @media print {
+      @page { size: A4 portrait; margin: 0; }
+      html, body { background: white !important; }
+      .controls, .page-label { display: none !important; }
+      .sheet-wrap { padding: 0 !important; gap: 0 !important; }
+      .page { box-shadow: none !important; page-break-after: always; }
+      .page:last-child { page-break-after: auto; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="controls">
+  <h1>VETA · DOBLE CARA</h1>
+  <button class="btn btn-print" onclick="window.print()">&#128438; Imprimir / PDF</button>
+  <div class="info">
+    Anverso + Reverso intercalados · 70 × 120 mm · A4<br>
+    Imprimir con: <strong>Doble cara · Voltear por lado largo</strong>
+  </div>
+</div>
+
+<div class="sheet-wrap" id="sheet-wrap"></div>
+
+<script>
+"use strict";
+
+const C = {
+  parchment:'#f4e4bc', ink:'#2c1e14', inkDark:'#1a0e08',
+  gold:'#c4a060', terracotta:'#8b4513', moss:'#3e4c1d',
+};
+
+// A4: 210×297mm · 2 columnas · 2 filas
+// H: 20 | 70 | 30 | 70 | 20 = 210 ✓
+// V: 18.5 | 120 | 20 | 120 | 18.5 = 297 ✓
+const POS = [
+  {x:20,  y:18.5},
+  {x:120, y:18.5},
+  {x:20,  y:158.5},
+  {x:120, y:158.5},
+];
+
+// Posiciones espejadas para reverso (voltear por lado largo)
+// Al girar la hoja, izquierda ↔ derecha
+// x_mirror = 210 - x - 70
+const POS_MIRROR = [
+  {x:120, y:18.5},
+  {x:20,  y:18.5},
+  {x:120, y:158.5},
+  {x:20,  y:158.5},
+];
+
+const CARDS = [
+  {id:0,  type:'Inicio',   title:'El Alba',
+   desc:'El origen y el potencial puro.',
+   paths:`<circle cx="50" cy="50" r="15"/>
+          <path d="M50 20v10M50 70v10M20 50h10M70 50h10M28 28l7 7M65 65l7 7M28 72l7-7M65 35l7-7"/>
+          <path d="M10 85c20-10 40 10 60 0s20-10 20-10"/>`},
+  {id:1,  type:'Elemento', title:'El Refugio',
+   desc:'Seguridad y hogar interno.',
+   paths:`<path d="M20 80h60V50L50 25 20 50z"/>
+          <path d="M40 80V60h20v20M65 40v-10h5v15"/>`},
+  {id:2,  type:'Elemento', title:'El Sendero',
+   desc:'El viaje es el destino.',
+   paths:`<path d="M30 90c10-30 40-30 40-60M40 90c10-30 40-30 40-60" stroke-dasharray="4 2"/>`},
+  {id:3,  type:'Elemento', title:'El Umbral',
+   desc:'El paso hacia lo nuevo.',
+   paths:`<path d="M30 85V25c0-10 10-15 20-15s20 5 20 15v60"/>
+          <path d="M30 40h40M30 60h40"/>`},
+  {id:4,  type:'Elemento', title:'El Pozo',
+   desc:'Sabiduría profunda.',
+   paths:`<path d="M30 85h40V60H30z"/>
+          <path d="M30 60l20-20 20 20"/>
+          <circle cx="50" cy="75" r="10" stroke-dasharray="2 2"/>`},
+  {id:5,  type:'Elemento', title:'La Atalaya',
+   desc:'Perspectiva y logros.',
+   paths:`<path d="M35 85h30V40l-5-5h-20l-5 5z"/>
+          <path d="M30 40h40l-5-10h-30z"/>`},
+  {id:6,  type:'Elemento', title:'El Mercado',
+   desc:'Conexión e intercambio.',
+   paths:`<path d="M50 20v60M30 20h40"/>
+          <path d="M30 20L20 50h20zM70 20L60 50h20z"/>`},
+  {id:7,  type:'Elemento', title:'La Hoguera',
+   desc:'Pasión y transformación.',
+   paths:`<path d="M50 20c-15 20 10 40 0 60M40 30c-10 20 5 35 0 50M60 30c10 20-5 35 0 50"/>`},
+  {id:8,  type:'Hierba',   title:'Romero',
+   desc:'Memoria y claridad.',
+   paths:`<path d="M50 85V20"/>
+          <path d="M50 70l15-5M50 60l18-8M50 50l15-10M50 40l12-12"/>
+          <path d="M50 70l-15-5M50 60l-18-8M50 50l-15-10M50 40l-12-12"/>`},
+  {id:9,  type:'Hierba',   title:'Lavanda',
+   desc:'Calma y paciencia.',
+   paths:`<path d="M50 90V40"/>
+          <circle cx="50" cy="35" r="3"/>
+          <circle cx="45" cy="45" r="2"/>
+          <circle cx="55" cy="42" r="2"/>
+          <circle cx="48" cy="25" r="3"/>
+          <circle cx="52" cy="15" r="2"/>`},
+  {id:10, type:'Hierba',   title:'Ortiga',
+   desc:'Protección y límites.',
+   paths:`<path d="M50 80V30"/>
+          <path d="M50 60Q70 50 60 30T50 30"/>
+          <path d="M50 60Q30 50 40 30T50 30"/>`},
+  {id:11, type:'Hierba',   title:'Sauce',
+   desc:'Flexibilidad y fluidez.',
+   paths:`<path d="M50 85V50"/>
+          <path d="M50 50c-20 0-30 20-30 40M50 50c20 0 30 20 30 40"/>`},
+  {id:12, type:'Hierba',   title:'Caléndula',
+   desc:'Consuelo y amabilidad.',
+   paths:`<circle cx="50" cy="50" r="10"/>
+          <path d="M50 40V20M60 42l15-15M60 58l15 15M50 60v20M40 58l-15 15M40 42l-15-15"/>`},
+  {id:13, type:'Hierba',   title:'Salvia',
+   desc:'Limpieza y renovación.',
+   paths:`<path d="M50 80c-20 0-20-40 0-60 20 20 20 60 0 60z"/>
+          <path d="M50 20v60M40 40l20 20M40 60l20-20"/>`},
+  {id:14, type:'Hierba',   title:'Menta',
+   desc:'Frescura y energía.',
+   paths:`<path d="M50 85V40"/>
+          <path d="M50 60c15 0 20-15 20-20s-10-5-20 0"/>
+          <path d="M50 60c-15 0-20-15-20-20s10-5 20 0"/>`},
+  {id:15, type:'Arraigo',  title:'Raíz',
+   desc:'Lo que te sostiene.',
+   paths:`<path d="M50 10v20"/>
+          <path d="M50 30c-10 20-20 30-10 60M50 30c10 20 20 30 10 60"/>`},
+  {id:16, type:'Arraigo',  title:'Semilla',
+   desc:'Tu intención hoy.',
+   paths:`<path d="M50 70a20 20 0 0 0 20-20V40H30v10a20 20 0 0 0 20 20z"/>
+          <path d="M40 40l10-15 10 15"/>`},
+  {id:17, type:'Arraigo',  title:'Brote',
+   desc:'Un pequeño gran comienzo.',
+   paths:`<path d="M50 90V60"/>
+          <path d="M50 60c10-10 25 0 25 0s-5 15-25 5"/>
+          <path d="M50 60c-10-10-25 0-25 0s5 15 25 5"/>`},
+  {id:18, type:'Arraigo',  title:'Piedra',
+   desc:'Resiliencia y silencio.',
+   paths:`<path d="M30 70c0-20 20-30 40-20s20 30 0 40-40 0-40-20z"/>`},
+  {id:19, type:'Arraigo',  title:'Viento',
+   desc:'Soltar la perfección.',
+   paths:`<path d="M20 40c30 0 30 20 60 20M25 55c20 0 20-10 40-10" stroke-dasharray="5 2"/>`},
+  {id:20, type:'Arraigo',  title:'Tierra',
+   desc:'Presencia y cuerpo.',
+   paths:`<path d="M20 70h60M30 80h40M45 88h10"/>
+          <path d="M40 50l5 5 10-10" opacity="0.3"/>`},
+  {id:21, type:'Arraigo',  title:'Fruto',
+   desc:'Celebrar la fluidez.',
+   paths:`<circle cx="50" cy="55" r="25"/>
+          <path d="M50 30V20l10 5"/>`},
+];
+
+const DEFS = `
+<defs>
+  <pattern id="hatch" patternUnits="userSpaceOnUse" width="2.5" height="2.5">
+    <line x1="0" y1="0" x2="2.5" y2="2.5" stroke="#c8a070" stroke-width="0.18"/>
+  </pattern>
+  <pattern id="millefleurs" patternUnits="userSpaceOnUse" width="13" height="17">
+    <circle cx="6.5" cy="8.5" r="3.2" fill="none" stroke="#f4e4bc" stroke-width="0.28" opacity="0.22"/>
+    <circle cx="6.5" cy="8.5" r="0.9" fill="#f4e4bc" opacity="0.14"/>
+    <line x1="6.5" y1="4.3" x2="6.5" y2="2.5" stroke="#f4e4bc" stroke-width="0.22" opacity="0.18"/>
+    <line x1="6.5" y1="12.7" x2="6.5" y2="14.5" stroke="#f4e4bc" stroke-width="0.22" opacity="0.18"/>
+    <line x1="2.3" y1="8.5" x2="0.5" y2="8.5" stroke="#f4e4bc" stroke-width="0.22" opacity="0.18"/>
+    <line x1="10.7" y1="8.5" x2="12.5" y2="8.5" stroke="#f4e4bc" stroke-width="0.22" opacity="0.18"/>
+    <circle cx="0"  cy="0"  r="1.5" fill="none" stroke="#f4e4bc" stroke-width="0.2" opacity="0.1"/>
+    <circle cx="13" cy="0"  r="1.5" fill="none" stroke="#f4e4bc" stroke-width="0.2" opacity="0.1"/>
+    <circle cx="0"  cy="17" r="1.5" fill="none" stroke="#f4e4bc" stroke-width="0.2" opacity="0.1"/>
+    <circle cx="13" cy="17" r="1.5" fill="none" stroke="#f4e4bc" stroke-width="0.2" opacity="0.1"/>
+  </pattern>
+</defs>`;
+
+function cropMarks(x, y, w=70, h=120) {
+  const L=5, G=2, s=`stroke="#bbb" stroke-width="0.15"`;
+  return `
+    <line x1="${x-L-G}" y1="${y}"   x2="${x-G}"     y2="${y}"   ${s}/>
+    <line x1="${x}"     y1="${y-L-G}" x2="${x}"     y2="${y-G}" ${s}/>
+    <line x1="${x+w+G}" y1="${y}"   x2="${x+w+L+G}" y2="${y}"   ${s}/>
+    <line x1="${x+w}"   y1="${y-L-G}" x2="${x+w}"   y2="${y-G}" ${s}/>
+    <line x1="${x-L-G}" y1="${y+h}" x2="${x-G}"     y2="${y+h}" ${s}/>
+    <line x1="${x}"     y1="${y+h+G}" x2="${x}"     y2="${y+h+L+G}" ${s}/>
+    <line x1="${x+w+G}" y1="${y+h}" x2="${x+w+L+G}" y2="${y+h}" ${s}/>
+    <line x1="${x+w}"   y1="${y+h+G}" x2="${x+w}"   y2="${y+h+L+G}" ${s}/>`;
+}
+
+function frontCard(card, x, y) {
+  return `
+<g transform="translate(${x},${y})">
+  <rect width="70" height="120" fill="${C.parchment}"/>
+  <rect width="70" height="120" fill="url(#hatch)" opacity="0.25"/>
+  <rect x="1"   y="1"   width="68"   height="118"   fill="none" stroke="${C.gold}" stroke-width="0.35"/>
+  <rect x="2.8" y="2.8" width="64.4" height="114.4" fill="none" stroke="${C.gold}" stroke-width="0.12"/>
+  <path d="M4 4L8 4M4 4L4 8"             fill="none" stroke="${C.gold}" stroke-width="0.4" opacity="0.6"/>
+  <path d="M66 4L62 4M66 4L66 8"         fill="none" stroke="${C.gold}" stroke-width="0.4" opacity="0.6"/>
+  <path d="M4 116L8 116M4 116L4 112"     fill="none" stroke="${C.gold}" stroke-width="0.4" opacity="0.6"/>
+  <path d="M66 116L62 116M66 116L66 112" fill="none" stroke="${C.gold}" stroke-width="0.4" opacity="0.6"/>
+  <text x="35" y="10.5" text-anchor="middle"
+        font-family="Georgia,serif" font-size="3.5"
+        fill="${C.ink}" letter-spacing="2" opacity="0.4">${card.type.toUpperCase()}</text>
+  <line x1="8" y1="12.5" x2="62" y2="12.5" stroke="${C.gold}" stroke-width="0.2" opacity="0.4"/>
+  <svg x="11" y="15" width="48" height="55" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+    <g fill="none" stroke="${C.ink}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      ${card.paths}
+    </g>
+  </svg>
+  <line x1="22" y1="74.5" x2="48" y2="74.5" stroke="${C.terracotta}" stroke-width="0.4" opacity="0.45"/>
+  <circle cx="35" cy="74.5" r="1" fill="${C.terracotta}" opacity="0.35"/>
+  <text x="35" y="84" text-anchor="middle"
+        font-family="Georgia,serif" font-size="7" font-weight="bold"
+        fill="${C.inkDark}">${card.title}</text>
+  <text x="35" y="94" text-anchor="middle"
+        font-family="Georgia,serif" font-size="4.5" font-style="italic"
+        fill="${C.ink}" opacity="0.65">${card.desc}</text>
+  <text x="4.5" y="117" font-family="'Courier New',monospace" font-size="3"
+        fill="${C.ink}" opacity="0.18">${String(card.id).padStart(2,'0')}</text>
+</g>`;
+}
+
+function backCard(x, y) {
+  return `
+<g transform="translate(${x},${y})">
+  <rect width="70" height="120" fill="${C.moss}"/>
+  <rect width="70" height="120" fill="url(#millefleurs)"/>
+  <rect x="2.5" y="2.5" width="65"  height="115" fill="none" stroke="#f4e4bc" stroke-width="0.35" opacity="0.22"/>
+  <rect x="4.5" y="4.5" width="61"  height="111" fill="none" stroke="#f4e4bc" stroke-width="0.12" opacity="0.15"/>
+  <text text-anchor="middle" dominant-baseline="middle"
+        font-family="Georgia,serif" font-size="7.5"
+        fill="#f4e4bc" letter-spacing="7" opacity="0.28"
+        transform="translate(35,60) rotate(-90)">VETA</text>
+</g>`;
+}
+
+function buildFrontPage(slice, pageNum) {
+  let inner = DEFS;
+  slice.forEach((card, i) => {
+    if (i >= POS.length) return;
+    const {x,y} = POS[i];
+    inner += cropMarks(x, y);
+    inner += frontCard(card, x, y);
+  });
+  return `
+<div class="page-label">Página ${pageNum} — Anverso (cartas ${slice[0].id+1}–${slice[slice.length-1].id+1})</div>
+<div class="page front-page">
+  <svg xmlns="http://www.w3.org/2000/svg" width="210mm" height="297mm" viewBox="0 0 210 297">${inner}</svg>
+</div>`;
+}
+
+function buildBackPage(slice, pageNum) {
+  let inner = DEFS;
+  // Reversos en posiciones espejadas (para doble cara "voltear por lado largo")
+  slice.forEach((_, i) => {
+    if (i >= POS_MIRROR.length) return;
+    const {x,y} = POS_MIRROR[i];
+    inner += cropMarks(x, y);
+    inner += backCard(x, y);
+  });
+  return `
+<div class="page-label">Página ${pageNum} — Reverso (espejo para doble cara)</div>
+<div class="page back-page">
+  <svg xmlns="http://www.w3.org/2000/svg" width="210mm" height="297mm" viewBox="0 0 210 297">${inner}</svg>
+</div>`;
+}
+
+function render() {
+  const wrap = document.getElementById('sheet-wrap');
+  let html = '';
+  const N = POS.length; // 4 cartas por página
+  let pageNum = 1;
+
+  for (let i = 0; i < CARDS.length; i += N) {
+    const slice = CARDS.slice(i, i + N);
+    html += buildFrontPage(slice, pageNum++);
+    html += buildBackPage(slice, pageNum++);
+  }
+
+  wrap.innerHTML = html;
+}
+
+window.addEventListener('load', render);
+</script>
+</body>
+</html>
