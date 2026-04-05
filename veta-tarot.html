@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VETA - Estación de Impresión de Arcanos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --parchment: #f4e4bc;
+            --dark-wood: #1a120b;
+            --moss: #3e4c1d;
+            --terracotta: #8b4513;
+            --gold: #b8860b;
+            --ink: #2c1e14;
+            /* Medidas reales de carta de tarot */
+            --card-width: 70mm;
+            --card-height: 120mm;
+        }
+
+        body {
+            background-color: var(--dark-wood);
+            background-image: url('https://www.transparenttextures.com/patterns/dark-leather.png');
+            font-family: 'EB Garamond', serif;
+            color: var(--ink);
+            margin: 0;
+            padding: 0;
+        }
+
+        .ui-panel {
+            background: rgba(26, 18, 11, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(244, 228, 188, 0.1);
+        }
+
+        .btn-veta {
+            background: var(--terracotta);
+            color: var(--parchment);
+            padding: 10px 20px;
+            border-radius: 2px;
+            font-family: 'Cinzel', serif;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 0.75rem;
+            transition: all 0.3s;
+            border: 1px solid transparent;
+            cursor: pointer;
+        }
+
+        .btn-veta:hover {
+            background: var(--moss);
+            border-color: var(--parchment);
+        }
+
+        .card-wrapper {
+            width: var(--card-width);
+            height: var(--card-height);
+            position: relative;
+            margin: 8mm;
+            display: inline-block;
+            vertical-align: top;
+        }
+
+        .card-visual {
+            width: 100%;
+            height: 100%;
+            background-color: var(--parchment);
+            background-image: url('https://www.transparenttextures.com/patterns/paper-fibers.png');
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border: 0.5mm solid #d2b48c;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            padding: 8mm;
+            box-sizing: border-box;
+        }
+
+        .card-reverso {
+            background-color: var(--moss);
+            background-image: url('https://www.transparenttextures.com/patterns/pinstriped-suit.png');
+            border: 2mm double rgba(244, 228, 188, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--parchment);
+        }
+
+        .svg-container svg {
+            width: 100%;
+            height: 100%;
+            stroke: var(--ink);
+            fill: none;
+            stroke-width: 1.5;
+        }
+
+        .millefleurs-pattern {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            opacity: 0.25;
+            padding: 5mm;
+        }
+
+        .crop-mark {
+            position: absolute;
+            width: 5mm;
+            height: 5mm;
+            border: 0.1mm solid rgba(0,0,0,0.2);
+        }
+        .cm-tl { top: -3mm; left: -3mm; border-right: 0; border-bottom: 0; }
+        .cm-tr { top: -3mm; right: -3mm; border-left: 0; border-bottom: 0; }
+        .cm-bl { bottom: -3mm; left: -3mm; border-right: 0; border-top: 0; }
+        .cm-br { bottom: -3mm; right: -3mm; border-left: 0; border-top: 0; }
+
+        @media print {
+            @page { size: A4; margin: 0; }
+            body { background: white !important; }
+            .no-print { display: none !important; }
+            .print-page {
+                width: 210mm;
+                height: 297mm;
+                margin: 0;
+                padding: 15mm;
+                page-break-after: always;
+                display: flex;
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+            .card-visual { box-shadow: none !important; border: 0.1mm solid #bbb; }
+        }
+
+        body.show-fronts .card-reverso { display: none; }
+        body.show-backs .card-visual:not(.card-reverso) { display: none; }
+        body.show-backs .card-reverso { display: flex; }
+
+        #toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--moss);
+            color: var(--parchment);
+            padding: 15px 30px;
+            border-radius: 4px;
+            font-family: 'Cinzel', serif;
+            z-index: 100;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="show-fronts">
+
+    <nav class="no-print ui-panel sticky top-0 z-50 p-6 flex flex-col items-center">
+        <h1 class="text-4xl font-bold mb-4 tracking-widest text-[#f4e4bc]" style="font-family: 'Cinzel', serif;">VETA · LABORATORIO</h1>
+
+        <div class="flex flex-wrap gap-3 justify-center">
+            <button onclick="setView('fronts')" id="btn-fronts" class="btn-veta">Ver Anversos</button>
+            <button onclick="setView('backs')" id="btn-backs" class="btn-veta opacity-50">Ver Reversos</button>
+            <button onclick="window.print()" class="btn-veta bg-white text-black font-bold">1. Guardar PDF</button>
+            <button onclick="copyCurrentCode()" class="btn-veta" style="background: var(--gold);">2. Copiar Código (Respaldo)</button>
+        </div>
+
+        <div class="mt-4 text-[#f4e4bc]/60 text-xs text-center max-w-lg">
+            <p>Medidas reales: <strong>70mm × 120mm</strong> por carta · Papel A4 · 4 cartas por página</p>
+            <p>Si el botón "Guardar PDF" no responde, usa <strong>Copiar Código</strong>, pégalo en un .html local y ábrelo para imprimir.</p>
+        </div>
+    </nav>
+
+    <div id="toast">¡Código copiado al portapapeles!</div>
+
+    <main id="main-content" class="flex flex-col items-center py-10"></main>
+
+    <script>
+        const svgs = {
+            alba: `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="15"/><path d="M50 20v10M50 70v10M20 50h10M70 50h10M28 28l7 7M65 65l7 7M28 72l7-7M65 35l7-7"/><path d="M10 85c20-10 40 10 60 0s20-10 20-10"/></svg>`,
+            refugio: `<svg viewBox="0 0 100 100"><path d="M20 80h60V50L50 25 20 50z"/><path d="M40 80V60h20v20M65 40v-10h5v15"/></svg>`,
+            sendero: `<svg viewBox="0 0 100 100"><path d="M30 90c10-30 40-30 40-60M40 90c10-30 40-30 40-60" stroke-dasharray="4 2"/></svg>`,
+            umbral: `<svg viewBox="0 0 100 100"><path d="M30 85V25c0-10 10-15 20-15s20 5 20 15v60"/><path d="M30 40h40M30 60h40"/></svg>`,
+            pozo: `<svg viewBox="0 0 100 100"><path d="M30 85h40V60H30z"/><path d="M30 60l20-20 20 20"/><circle cx="50" cy="75" r="10" stroke-dasharray="2 2"/></svg>`,
+            atalaya: `<svg viewBox="0 0 100 100"><path d="M35 85h30V40l-5-5h-20l-5 5z"/><path d="M30 40h40l-5-10h-30z"/></svg>`,
+            mercado: `<svg viewBox="0 0 100 100"><path d="M50 20v60M30 20h40"/><path d="M30 20L20 50h20zM70 20L60 50h20z"/></svg>`,
+            hoguera: `<svg viewBox="0 0 100 100"><path d="M50 20c-15 20 10 40 0 60M40 30c-10 20 5 35 0 50M60 30c10 20-5 35 0 50"/></svg>`,
+            romero: `<svg viewBox="0 0 100 100"><path d="M50 85V20"/><path d="M50 70l15-5M50 60l18-8M50 50l15-10M50 40l12-12"/><path d="M50 70l-15-5M50 60l-18-8M50 50l-15-10M50 40l-12-12"/></svg>`,
+            lavanda: `<svg viewBox="0 0 100 100"><path d="M50 90V40"/><circle cx="50" cy="35" r="3"/><circle cx="45" cy="45" r="2"/><circle cx="55" cy="42" r="2"/><circle cx="48" cy="25" r="3"/><circle cx="52" cy="15" r="2"/></svg>`,
+            ortiga: `<svg viewBox="0 0 100 100"><path d="M50 80V30"/><path d="M50 60Q70 50 60 30T50 30"/><path d="M50 60Q30 50 40 30T50 30"/></svg>`,
+            sauce: `<svg viewBox="0 0 100 100"><path d="M50 85V50"/><path d="M50 50c-20 0-30 20-30 40M50 50c20 0 30 20 30 40"/></svg>`,
+            calendula: `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="10"/><path d="M50 40V20M60 42l15-15M60 58l15 15M50 60v20M40 58l-15 15M40 42l-15-15"/></svg>`,
+            salvia: `<svg viewBox="0 0 100 100"><path d="M50 80c-20 0-20-40 0-60 20 20 20 60 0 60z"/><path d="M50 20v60M40 40l20 20M40 60l20-20"/></svg>`,
+            menta: `<svg viewBox="0 0 100 100"><path d="M50 85V40"/><path d="M50 60c15 0 20-15 20-20s-10-5-20 0"/><path d="M50 60c-15 0-20-15-20-20s10-5 20 0"/></svg>`,
+            raiz: `<svg viewBox="0 0 100 100"><path d="M50 10v20"/><path d="M50 30c-10 20-20 30-10 60M50 30c10 20 20 30 10 60"/></svg>`,
+            semilla: `<svg viewBox="0 0 100 100"><path d="M50 70a20 20 0 0 0 20-20V40H30v10a20 20 0 0 0 20 20z"/><path d="M40 40l10-15 10 15"/></svg>`,
+            brote: `<svg viewBox="0 0 100 100"><path d="M50 90V60"/><path d="M50 60c10-10 25 0 25 0s-5 15-25 5"/><path d="M50 60c-10-10-25 0-25 0s5 15 25 5"/></svg>`,
+            piedra: `<svg viewBox="0 0 100 100"><path d="M30 70c0-20 20-30 40-20s20 30 0 40-40 0-40-20z"/></svg>`,
+            viento: `<svg viewBox="0 0 100 100"><path d="M20 40c30 0 30 20 60 20M25 55c20 0 20-10 40-10" stroke-dasharray="5 2"/></svg>`,
+            tierra: `<svg viewBox="0 0 100 100"><path d="M20 70h60M30 80h40M45 88h10"/><path d="M40 50l5 5 10-10" opacity="0.3"/></svg>`,
+            fruto: `<svg viewBox="0 0 100 100"><circle cx="50" cy="55" r="25"/><path d="M50 30V20l10 5"/></svg>`
+        };
+
+        const flowerIcon = `<svg viewBox="0 0 100 100" class="w-full h-full opacity-30"><circle cx="50" cy="50" r="12" fill="var(--parchment)"/><path d="M50 15v20M50 65v20M15 50h20M65 50h20" stroke="var(--parchment)" stroke-width="2"/></svg>`;
+
+        const cards = [
+            { id: 0,  type: 'inicio',   title: 'El Alba',     desc: 'El origen y el potencial puro.',  svg: svgs.alba },
+            { id: 1,  type: 'elemento', title: 'El Refugio',  desc: 'Seguridad y hogar interno.',      svg: svgs.refugio },
+            { id: 2,  type: 'elemento', title: 'El Sendero',  desc: 'El viaje es el destino.',         svg: svgs.sendero },
+            { id: 3,  type: 'elemento', title: 'El Umbral',   desc: 'El paso hacia lo nuevo.',         svg: svgs.umbral },
+            { id: 4,  type: 'elemento', title: 'El Pozo',     desc: 'Sabiduría profunda.',             svg: svgs.pozo },
+            { id: 5,  type: 'elemento', title: 'La Atalaya',  desc: 'Perspectiva y logros.',           svg: svgs.atalaya },
+            { id: 6,  type: 'elemento', title: 'El Mercado',  desc: 'Conexión e intercambio.',         svg: svgs.mercado },
+            { id: 7,  type: 'elemento', title: 'La Hoguera',  desc: 'Pasión y transformación.',        svg: svgs.hoguera },
+            { id: 8,  type: 'hierba',   title: 'Romero',      desc: 'Memoria y claridad.',             svg: svgs.romero },
+            { id: 9,  type: 'hierba',   title: 'Lavanda',     desc: 'Calma y paciencia.',              svg: svgs.lavanda },
+            { id: 10, type: 'hierba',   title: 'Ortiga',      desc: 'Protección y límites.',           svg: svgs.ortiga },
+            { id: 11, type: 'hierba',   title: 'Sauce',       desc: 'Flexibilidad y fluidez.',         svg: svgs.sauce },
+            { id: 12, type: 'hierba',   title: 'Caléndula',   desc: 'Consuelo y amabilidad.',          svg: svgs.calendula },
+            { id: 13, type: 'hierba',   title: 'Salvia',      desc: 'Limpieza y renovación.',          svg: svgs.salvia },
+            { id: 14, type: 'hierba',   title: 'Menta',       desc: 'Frescura y energía.',             svg: svgs.menta },
+            { id: 15, type: 'arraigo',  title: 'Raíz',        desc: 'Lo que te sostiene.',             svg: svgs.raiz },
+            { id: 16, type: 'arraigo',  title: 'Semilla',     desc: 'Tu intención hoy.',               svg: svgs.semilla },
+            { id: 17, type: 'arraigo',  title: 'Brote',       desc: 'Un pequeño gran éxito.',          svg: svgs.brote },
+            { id: 18, type: 'arraigo',  title: 'Piedra',      desc: 'Resiliencia y silencio.',         svg: svgs.piedra },
+            { id: 19, type: 'arraigo',  title: 'Viento',      desc: 'Soltar la perfección.',           svg: svgs.viento },
+            { id: 20, type: 'arraigo',  title: 'Tierra',      desc: 'Presencia y cuerpo.',             svg: svgs.tierra },
+            { id: 21, type: 'arraigo',  title: 'Fruto',       desc: 'Celebrar la fluidez.',            svg: svgs.fruto }
+        ];
+
+        function setView(view) {
+            document.body.className = 'show-' + view;
+            document.getElementById('btn-fronts').classList.toggle('opacity-50', view !== 'fronts');
+            document.getElementById('btn-backs').classList.toggle('opacity-50', view !== 'backs');
+        }
+
+        function createCard(card) {
+            return `
+                <div class="card-wrapper">
+                    <div class="crop-mark cm-tl"></div><div class="crop-mark cm-tr"></div>
+                    <div class="crop-mark cm-bl"></div><div class="crop-mark cm-br"></div>
+                    <div class="card-visual">
+                        <div class="text-[8px] uppercase tracking-[0.3em] font-bold opacity-40 mb-2">${card.type}</div>
+                        <div class="flex-1 svg-container flex items-center justify-center mix-blend-multiply py-4">
+                            ${card.svg}
+                        </div>
+                        <div class="mt-auto text-center">
+                            <h2 class="text-xl font-bold leading-tight" style="font-family: 'Cinzel', serif;">${card.title}</h2>
+                            <div class="h-[0.5mm] w-6 bg-terracotta/30 mx-auto my-2"></div>
+                            <p class="text-[10px] italic opacity-80 leading-snug h-8">${card.desc}</p>
+                        </div>
+                        <div class="absolute bottom-2 left-2 text-[8px] font-mono opacity-20">${card.id.toString().padStart(2, '0')}</div>
+                    </div>
+                    <div class="card-visual card-reverso">
+                        <div class="millefleurs-pattern">${Array(12).fill(flowerIcon).join('')}</div>
+                        <div class="text-xs tracking-[0.8em] font-bold opacity-40" style="font-family: 'Cinzel', serif; transform: rotate(-90deg);">VETA</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderPages() {
+            const content = document.getElementById('main-content');
+            const cardsPerPage = 4; // 4 cartas por página A4 (medidas reales 70mm × 120mm)
+            let html = '';
+            for (let i = 0; i < cards.length; i += cardsPerPage) {
+                const pageCards = cards.slice(i, i + cardsPerPage);
+                html += `<div class="print-page shadow-2xl mb-10">${pageCards.map(c => createCard(c)).join('')}</div>`;
+            }
+            content.innerHTML = html;
+        }
+
+        function copyCurrentCode() {
+            const html = document.documentElement.outerHTML;
+            navigator.clipboard.writeText(html).catch(() => {
+                const textArea = document.createElement("textarea");
+                textArea.value = html;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+            });
+            const toast = document.getElementById('toast');
+            toast.style.opacity = '1';
+            setTimeout(() => { toast.style.opacity = '0'; }, 3000);
+        }
+
+        window.onload = renderPages;
+    </script>
+
+</body>
+</html>
